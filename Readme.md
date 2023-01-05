@@ -16,4 +16,4 @@ Run following ansible script :
 > ansible-playbook json-server.yml
 
 * To run mongodb :
-> ansible-playbook mongo.yml --extra-vars "user=YOUR_USER pwd=YOUR_PWD network=YOUR_NETWORK_NAME"
+> ansible-playbook mongo.yml --extra-vars "user=YOUR_MONGO_USER pwd=YOUR_MONGO_PWD network=YOUR_NETWORK_NAME"
