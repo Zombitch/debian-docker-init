@@ -2,7 +2,7 @@
 
 ## Installation steps
 
-In commande line terminal, run :
+In command line terminal, run :
 
 > sudo bash
 
