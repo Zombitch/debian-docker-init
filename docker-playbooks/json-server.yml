@@ -1,0 +1,23 @@
+- hosts: localhost
+  become: yes
+  tasks:
+
+  - name: Stop and remove json-server container
+    community.docker.docker_container:
+      container_default_behavior: no_defaults
+      name: json-server
+      image: clue/json-server
+      state: absent
+      keep_volumes: true
+      force_kill: true
+
+  - name: Run json-server container
+    community.docker.docker_container:
+      container_default_behavior: no_defaults
+      name: json-server
+      image: clue/json-server
+      state: started
+      published_ports :
+        - 0.0.0.0:2350:80
+      volumes:
+        - /data/db_mock.json:/data/db.json
