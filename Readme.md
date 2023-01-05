@@ -5,8 +5,10 @@
 In commande line terminal, run :
 
 > sudo bash
-chmod a+x ./init.sh
-./init.sh
+
+>chmod a+x ./init.sh
+
+>./init.sh
 
 ## Ansible scripts
 
