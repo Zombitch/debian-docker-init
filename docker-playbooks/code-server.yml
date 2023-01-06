@@ -1,0 +1,53 @@
+- hosts: localhost
+  become: yes
+  tasks:
+
+  - name: Create code-server data folder
+    file:
+      path: /data/code-server/
+      state: directory
+
+  - name: Delete Dockerfile
+    file:
+      path: /data/code-server/Dockerfile
+      state: absent
+
+  - name: Write docker file
+    ansible.builtin.blockinfile:
+      path: /data/code-server/Dockerfile
+      block: |
+        FROM linuxserver/code-server
+        RUN npm install -g @angular/cli
+        RUN npm install -g @nestjs/cli
+      state: present
+
+  - name: Delete previous image
+    community.docker.docker_image:
+      name: mvs/code-server
+      state: absent
+      force_absent: true
+
+  - name: Create an image
+    community.docker.docker_image:
+      name: mvs/code-server
+      source: build
+      build: 
+        path: /data/code-server/Dockerfile
+
+  - name: Run code-server container
+    community.docker.docker_container:
+      container_default_behavior: no_defaults
+      name: code-server
+      image: mvs/code-server
+      state: started
+      published_ports :
+        - 0.0.0.0:2500:8443
+      volumes:
+        - /data/code-server:/config
+      networks:
+        - name: "{{ network }}"
+      env:
+        SUDO_PASSWORD: "{{ pwd }}"
+        PASSWORD: "{{ pwd }}"
+        TZ: Europe/Paris
+        DEFAULT_WORKSPACE: /config/workspace
