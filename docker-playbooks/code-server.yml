@@ -4,19 +4,26 @@
 
   - name: Create code-server data folder
     file:
-      path: /data/code-server/
+      path: /data/code-server/docker
       state: directory
 
   - name: Delete Dockerfile
     file:
-      path: /data/code-server/Dockerfile
+      path: /data/code-server/docker/Dockerfile
       state: absent
 
   - name: Write docker file
     ansible.builtin.blockinfile:
-      path: /data/code-server/Dockerfile
+      path: /data/code-server/docker/Dockerfile
+      create: true
+      mode: a+rwx
       block: |
         FROM linuxserver/code-server
+        RUN apt-get update
+        RUN apt-get install nodejs -y
+        RUN apt-get install npm -y
+        RUN apt-get install iputils-ping -y
+        RUN apt-get install telnet -y
         RUN npm install -g @angular/cli
         RUN npm install -g @nestjs/cli
       state: present
@@ -32,7 +39,7 @@
       name: mvs/code-server
       source: build
       build: 
-        path: /data/code-server/Dockerfile
+        path: /data/code-server/docker
 
   - name: Run code-server container
     community.docker.docker_container:
@@ -42,11 +49,15 @@
       state: started
       published_ports :
         - 0.0.0.0:2500:8443
+        - 0.0.0.0:4000:4000
+        - 0.0.0.0:4200:4200
       volumes:
         - /data/code-server:/config
       networks:
         - name: "{{ network }}"
       env:
+        PUID: 1000
+        PGID: 1000
         SUDO_PASSWORD: "{{ pwd }}"
         PASSWORD: "{{ pwd }}"
         TZ: Europe/Paris
