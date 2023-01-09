@@ -7,6 +7,11 @@
       path: /data/mongo/
       state: directory
 
+  - name: Create mongo data folder
+    file:
+      path: /data/mongo_conf
+      state: directory
+
   - name: Create network if it doesn't exist
     community.docker.docker_network:
       name: "{{ network }}"
@@ -32,6 +37,3 @@
         - /data/mongo:/data/db
       networks:
         - name: "{{ network }}"
-      env:
-        MONGO_INITDB_ROOT_USERNAME: "{{ user }}"
-        MONGO_INITDB_ROOT_PASSWORD: "{{ pwd }}"
