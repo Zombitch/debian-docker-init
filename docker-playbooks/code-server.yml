@@ -24,6 +24,7 @@
         RUN apt-get install npm -y
         RUN apt-get install iputils-ping -y
         RUN apt-get install telnet -y
+        RUN apt-get install wget -y
         RUN npm install -g @angular/cli
         RUN npm install -g @nestjs/cli
       state: present
