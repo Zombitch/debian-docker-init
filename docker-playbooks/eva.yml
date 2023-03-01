@@ -1,0 +1,55 @@
+- hosts: localhost
+  become: yes
+  tasks:
+
+  - name: Create eva data folder
+    file:
+      path: /data/eva/docker
+      state: directory
+
+  - name: Delete Dockerfile
+    file:
+      path: /data/eva/docker/Dockerfile
+      state: absent
+
+  - name: Write docker file
+    ansible.builtin.blockinfile:
+      path: /data/eva/docker/Dockerfile
+      create: true
+      mode: a+rwx
+      block: |
+        FROM alpine
+        RUN apk add --update nodejs
+        RUN apk add --update npm
+        RUN apk add --update wget
+        RUN apk add --update unzip
+        RUN npm install -g @angular/cli
+        WORKDIR /home/alpine
+        RUN wget https://github.com/Zombitch/eva/archive/refs/heads/main.zip
+        RUN unzip main.zip
+        RUN cd eva-main && npm i
+        EXPOSE 4200
+        CMD cd eva-main && ng serve --host 0.0.0.0
+      state: present
+
+  - name: Delete previous image
+    community.docker.docker_image:
+      name: mvs/eva
+      state: absent
+      force_absent: true
+
+  - name: Create an image
+    community.docker.docker_image:
+      name: mvs/eva
+      source: build
+      build: 
+        path: /data/eva/docker
+
+  - name: Run eva container
+    community.docker.docker_container:
+      container_default_behavior: no_defaults
+      name: eva
+      image: mvs/eva
+      state: started
+      published_ports :
+        - 0.0.0.0:4210:4200
