@@ -57,9 +57,9 @@
       networks:
         - name: "{{ network }}"
       env:
-        PUID: 1000
-        PGID: 1000
+        PUID: '1000'
+        PGID: '1000'
         SUDO_PASSWORD: "{{ pwd }}"
         PASSWORD: "{{ pwd }}"
-        TZ: Europe/Paris
-        DEFAULT_WORKSPACE: /config/workspace
+        TZ: 'Europe/Paris'
+        DEFAULT_WORKSPACE: '/config/workspace'
