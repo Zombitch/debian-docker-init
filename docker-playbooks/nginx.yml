@@ -8,7 +8,7 @@
 
   - name: Create dmz network
     community.docker.docker_network:
-      name: nginx_data
+      name: dmz_network
 
   - name: Delete previous nginx image
     community.docker.docker_image:
