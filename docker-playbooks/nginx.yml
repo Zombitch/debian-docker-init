@@ -6,6 +6,10 @@
     community.docker.docker_volume:
       name: nginx_data
 
+  - name: Create dmz network
+    community.docker.docker_network:
+      name: nginx_data
+
   - name: Delete previous nginx image
     community.docker.docker_image:
       name: nginx
