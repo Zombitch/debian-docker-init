@@ -1,0 +1,27 @@
+- hosts: localhost
+  become: yes
+  tasks:
+
+  - name: Create nginx volume
+    community.docker.docker_volume:
+      name: nginx_data
+
+  - name: Delete previous nginx image
+    community.docker.docker_image:
+      name: nginx
+      state: absent
+      force_absent: true
+
+  - name: Run nginx container
+    community.docker.docker_container:
+      container_default_behavior: no_defaults
+      name: nginx
+      image: nginx
+      state: started
+      published_ports :
+        - 0.0.0.0:80:80
+        - 0.0.0.0:443:443
+      volumes:
+        - nginx_data:/etc/nginx
+      networks:
+        - name: "dmz_network"
