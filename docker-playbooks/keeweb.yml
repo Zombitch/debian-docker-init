@@ -1,0 +1,81 @@
+- hosts: localhost
+  become: yes
+  tasks:
+
+  - name: Create keeweb volume
+    community.docker.docker_volume:
+      name: keeweb_data
+
+  - name: Delete previous antelle/keeweb image
+    community.docker.docker_image:
+      name: antelle/keeweb
+      state: absent
+      force_absent: true
+
+  - name: Remove keeweb container
+    community.docker.docker_container:
+      container_default_behavior: no_defaults
+      name: keeweb
+      state: absent
+      force_kill: true
+
+  - name: Run keeweb container
+    community.docker.docker_container:
+      container_default_behavior: no_defaults
+      name: keeweb
+      image: antelle/keeweb
+      hostname: keeweb_host
+      state: started
+      exposed_ports :
+        - 0.0.0.0:80:80
+      volumes:
+        - keeweb_data:/etc/nginx
+      networks:
+        - name: "dmz_network"
+
+  - name: Stop antelle/keeweb container
+    community.docker.docker_container:
+      name: keeweb
+      state: stopped
+      force_kill: true
+
+  - name: Delete keeweb.conf for embedded nginx
+    file:
+      path: /var/lib/docker/volumes/keeweb_data/_data/conf.d/keeweb.conf
+      state: absent
+
+  - name: ReWrite keeweb.conf to enable port 80
+    ansible.builtin.blockinfile:
+      path: /var/lib/docker/volumes/keeweb_data/_data/conf.d/keeweb.conf
+      create: true
+      mode: a+rwx
+      block: |
+        server {
+            listen       80;
+            listen  [::]:80;
+            root /keeweb;
+            index index.html;
+            server_name  localhost;
+
+            location / {
+                try_files $uri $uri/ =404;
+            }
+            
+            location ~ /\. {
+                deny all;
+            }
+        }
+      state: present
+
+  - name: Restart keeweb container
+    community.docker.docker_container:
+      container_default_behavior: no_defaults
+      name: keeweb
+      hostname: keeweb_host
+      state: started
+      exposed_ports :
+        - 0.0.0.0:80:80
+      volumes:
+        - keeweb_data:/etc/nginx
+      networks:
+        - name: "dmz_network"

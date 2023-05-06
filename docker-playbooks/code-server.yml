@@ -47,6 +47,7 @@
       container_default_behavior: no_defaults
       name: code-server
       image: mvs/code-server
+      hostname: codeserver_host
       state: started
       published_ports :
         - 0.0.0.0:2500:8443
