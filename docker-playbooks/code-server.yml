@@ -7,6 +7,10 @@
       path: /data/code-server/docker
       state: directory
 
+  - name: Create codeserver volume
+    community.docker.docker_volume:
+      name: codeserver_data
+
   - name: Delete Dockerfile
     file:
       path: /data/code-server/docker/Dockerfile
@@ -50,12 +54,12 @@
       hostname: codeserver_host
       state: started
       restart_policy: always
-      published_ports :
-        - 0.0.0.0:2500:8443
-        - 0.0.0.0:4000:4000
-        - 0.0.0.0:4200:4200
+      exposed_ports :
+        - 8443
+        - 4000
+        - 4200
       volumes:
-        - /data/code-server:/config
+        - codeserver_data:/config
       networks:
         - name: "{{ network }}"
       env:
@@ -64,4 +68,3 @@
         SUDO_PASSWORD: "{{ pwd }}"
         PASSWORD: "{{ pwd }}"
         TZ: 'Europe/Paris'
-        DEFAULT_WORKSPACE: '/config/workspace'
