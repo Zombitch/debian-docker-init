@@ -37,6 +37,7 @@
           - "0.0.0.0:{{ https_port }}:443"
         volumes:
           - "{{ nginx_volume }}:/etc/nginx"
+          - "/var/log/nginx:/var/log/nginx"
         networks:
           - name: "{{ dmz_network }}"
         healthcheck:
