@@ -4,7 +4,7 @@
   become: true
   vars:
     nginx_image: "nginx"
-    nginx_version: "1.27-alpine"
+    nginx_version: "latest"
     nginx_container_name: "nginx"
     nginx_volume: "nginx_data"
     dmz_network: "dmz_network"
@@ -34,7 +34,6 @@
         state: started
         restart_policy: unless-stopped
         published_ports:
-          - "0.0.0.0:{{ http_port }}:80"
           - "0.0.0.0:{{ https_port }}:443"
         volumes:
           - "{{ nginx_volume }}:/etc/nginx"
