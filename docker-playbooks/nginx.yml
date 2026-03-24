@@ -60,11 +60,11 @@
 
 ##########################################################################################################
 
-    - name: Install fail2ban and iptables
+    - name: Install fail2ban and nftables
       ansible.builtin.apt:
         name:
           - fail2ban
-          - iptables
+          - nftables
         state: present
         update_cache: true
 
@@ -75,37 +75,33 @@
         mode: "0755"
 
     # -----------------------------------------------------------------------
-    # Action: iptables-docker
-    # Inserts ban rules into the DOCKER-USER chain so they take effect before
-    # Docker's own FORWARD rules, blocking traffic to all containers.
+    # Action: nftables-docker
+    # Creates a per-jail nftables table hooking into the 'forward' chain.
+    # Docker published-port traffic is forwarded, not locally delivered,
+    # so 'forward' must be used — 'input' has no effect on container traffic.
+    # nftables sets provide O(1) IP lookup vs iptables linear chain scans.
     # -----------------------------------------------------------------------
-    - name: Deploy iptables-docker action
+    - name: Deploy nftables-docker action
       ansible.builtin.copy:
-        dest: /etc/fail2ban/action.d/iptables-docker.conf
+        dest: /etc/fail2ban/action.d/nftables-docker.conf
         mode: "0644"
         content: |
-          [INCLUDES]
-          before = iptables-common.conf
-
           [Definition]
-          actionstart = <iptables> -N f2b-<name>
-                        <iptables> -A f2b-<name> -j <returntype>
-                        <iptables> -I DOCKER-USER -p <protocol> -j f2b-<name>
+          actionstart = nft add table inet f2b-<name>
+                        nft -- add chain inet f2b-<name> forward { type filter hook forward priority -1 \; policy accept \; }
+                        nft add set inet f2b-<name> banned { type ipv4_addr \; flags interval \; }
+                        nft add rule inet f2b-<name> forward ip saddr @banned drop
 
-          actionstop = <iptables> -D DOCKER-USER -p <protocol> -j f2b-<name>
-                       <iptables> -F f2b-<name>
-                       <iptables> -X f2b-<name>
+          actionstop = nft delete table inet f2b-<name>
 
-          actioncheck = <iptables> -n -L DOCKER-USER | grep -q 'f2b-<name>[ \t]'
+          actioncheck = nft list table inet f2b-<name> > /dev/null 2>&1
 
-          actionban = <iptables> -I f2b-<name> 1 -s <ip> -j <blocktype>
+          actionban = nft add element inet f2b-<name> banned { <ip> }
 
-          actionunban = <iptables> -D f2b-<name> -s <ip> -j <blocktype>
+          actionunban = nft delete element inet f2b-<name> banned { <ip> }
 
           [Init]
           name = default
-          protocol = tcp
-          chain = DOCKER-USER
       notify: Reload fail2ban
 
     # -----------------------------------------------------------------------
@@ -153,7 +149,7 @@
           bantime  = {{ fail2ban_bantime }}
           findtime = {{ fail2ban_findtime }}
           ignoreip = {{ fail2ban_ignoreip }}
-          action   = iptables-docker[name=nginx-http-auth, port="80,443", protocol=tcp]
+          action   = nftables-docker[name=nginx-http-auth]
 
           # --- Rate-limit violations (error.log) ----------------------------
           [nginx-limit-req]
@@ -165,7 +161,7 @@
           bantime  = {{ fail2ban_bantime }}
           findtime = {{ fail2ban_findtime }}
           ignoreip = {{ fail2ban_ignoreip }}
-          action   = iptables-docker[name=nginx-limit-req, port="80,443", protocol=tcp]
+          action   = nftables-docker[name=nginx-limit-req]
 
           # --- Bot scanners (access.log) ------------------------------------
           [nginx-botsearch]
@@ -177,7 +173,7 @@
           bantime  = 24h
           findtime = 1h
           ignoreip = {{ fail2ban_ignoreip }}
-          action   = iptables-docker[name=nginx-botsearch, port="80,443", protocol=tcp]
+          action   = nftables-docker[name=nginx-botsearch]
 
           # --- Script/exploit probes (access.log) --------------------------
           [nginx-noscript]
@@ -189,7 +185,7 @@
           bantime  = {{ fail2ban_bantime }}
           findtime = {{ fail2ban_findtime }}
           ignoreip = {{ fail2ban_ignoreip }}
-          action   = iptables-docker[name=nginx-noscript, port="80,443", protocol=tcp]
+          action   = nftables-docker[name=nginx-noscript]
       notify: Reload fail2ban
 
     - name: Enable and start fail2ban
