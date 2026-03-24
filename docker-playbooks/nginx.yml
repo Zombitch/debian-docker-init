@@ -60,9 +60,11 @@
 
 ##########################################################################################################
 
-    - name: Install fail2ban
+    - name: Install fail2ban and iptables
       ansible.builtin.apt:
-        name: fail2ban
+        name:
+          - fail2ban
+          - iptables
         state: present
         update_cache: true
 
