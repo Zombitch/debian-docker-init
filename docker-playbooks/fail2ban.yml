@@ -1,64 +1,26 @@
 ---
+# Installs and configures fail2ban to protect the Dockerised nginx reverse proxy.
+#
+# Key design decisions:
+#  - Docker traffic bypasses the INPUT chain (it goes through FORWARD/DOCKER-USER),
+#    so a custom iptables-docker action targeting the DOCKER-USER chain is required.
+#  - nginx running in Docker symlinks /var/log/nginx/{access,error}.log to
+#    stdout/stderr by default. Mounting a host directory over /var/log/nginx
+#    (done in nginx.yml) removes those symlinks, causing nginx to write real files
+#    that fail2ban can monitor.
+#  - Run nginx.yml before this playbook so the log directory and bind mount exist.
+
 - hosts: localhost
   gather_facts: false
   become: true
   vars:
-    nginx_image: "nginx"
-    nginx_version: "latest"
-    nginx_container_name: "nginx"
-    nginx_volume: "nginx_data"
-    dmz_network: "dmz_network"
-    http_port: "80"
-    https_port: "443"
     nginx_log_path: "/var/log/nginx"
-    fail2ban_bantime: "-1"
+    fail2ban_bantime: "1h"
     fail2ban_findtime: "10m"
     fail2ban_maxretry: 5
     fail2ban_ignoreip: "127.0.0.1/8 ::1"
 
   tasks:
-
-    - name: Create nginx volume
-      community.docker.docker_volume:
-        name: "{{ nginx_volume }}"
-
-    - name: Create dmz network
-      community.docker.docker_network:
-        name: "{{ dmz_network }}"
-
-    - name: Pull nginx image
-      community.docker.docker_image:
-        name: "{{ nginx_image }}:{{ nginx_version }}"
-        source: pull
-        force_source: true
-
-    - name: Run nginx container
-      community.docker.docker_container:
-        name: "{{ nginx_container_name }}"
-        image: "{{ nginx_image }}:{{ nginx_version }}"
-        state: started
-        restart_policy: unless-stopped
-        published_ports:
-          - "0.0.0.0:{{ https_port }}:443"
-        volumes:
-          - "{{ nginx_volume }}:/etc/nginx"
-          - "{{ nginx_log_path }}:/var/log/nginx"
-        networks:
-          - name: "{{ dmz_network }}"
-        healthcheck:
-          test: ["CMD-SHELL", "nginx -t || exit 1"]
-          interval: 30s
-          timeout: 10s
-          retries: 3
-          start_period: 10s
-        memory: "256m"
-        cpu_shares: 512
-        log_driver: "json-file"
-        log_options:
-          max-size: "10m"
-          max-file: "3"
-
-##########################################################################################################
 
     - name: Install fail2ban and nftables
       ansible.builtin.apt:
@@ -186,6 +148,28 @@
           findtime = {{ fail2ban_findtime }}
           ignoreip = {{ fail2ban_ignoreip }}
           action   = nftables-docker[name=nginx-noscript]
+      notify: Reload fail2ban
+
+    # -----------------------------------------------------------------------
+    # sshd jail — override Debian's defaults-debian.conf which enables sshd
+    # but assumes /var/log/auth.log. On systemd-based Debian, SSH logs go to
+    # the journal; setting backend = systemd fixes the "no log file" error.
+    # sshd traffic goes directly to the host (not through Docker), so the
+    # standard iptables action on INPUT is correct here.
+    # -----------------------------------------------------------------------
+    - name: Deploy sshd jail configuration
+      ansible.builtin.copy:
+        dest: /etc/fail2ban/jail.d/sshd.conf
+        mode: "0644"
+        content: |
+          [sshd]
+          enabled  = true
+          backend  = systemd
+          maxretry = {{ fail2ban_maxretry }}
+          bantime  = {{ fail2ban_bantime }}
+          findtime = {{ fail2ban_findtime }}
+          ignoreip = {{ fail2ban_ignoreip }}
+          action   = nftables-multiport[name=sshd, port=ssh, protocol=tcp]
       notify: Reload fail2ban
 
     - name: Enable and start fail2ban
