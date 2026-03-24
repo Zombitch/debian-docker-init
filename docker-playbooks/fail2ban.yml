@@ -1,0 +1,186 @@
+---
+# Installs and configures fail2ban to protect the Dockerised nginx reverse proxy.
+#
+# Key design decisions:
+#  - Docker traffic bypasses the INPUT chain (it goes through FORWARD/DOCKER-USER),
+#    so a custom iptables-docker action targeting the DOCKER-USER chain is required.
+#  - nginx running in Docker symlinks /var/log/nginx/{access,error}.log to
+#    stdout/stderr by default. Mounting a host directory over /var/log/nginx
+#    (done in nginx.yml) removes those symlinks, causing nginx to write real files
+#    that fail2ban can monitor.
+#  - Run nginx.yml before this playbook so the log directory and bind mount exist.
+
+- hosts: localhost
+  gather_facts: false
+  become: true
+  vars:
+    nginx_log_path: "/var/log/nginx"
+    fail2ban_bantime: "1h"
+    fail2ban_findtime: "10m"
+    fail2ban_maxretry: 5
+    fail2ban_ignoreip: "127.0.0.1/8 ::1"
+
+  tasks:
+
+    - name: Install fail2ban
+      ansible.builtin.apt:
+        name: fail2ban
+        state: present
+        update_cache: true
+
+    - name: Create nginx log directory on host
+      ansible.builtin.file:
+        path: "{{ nginx_log_path }}"
+        state: directory
+        mode: "0755"
+
+    # -----------------------------------------------------------------------
+    # Action: iptables-docker
+    # Inserts ban rules into the DOCKER-USER chain so they take effect before
+    # Docker's own FORWARD rules, blocking traffic to all containers.
+    # -----------------------------------------------------------------------
+    - name: Deploy iptables-docker action
+      ansible.builtin.copy:
+        dest: /etc/fail2ban/action.d/iptables-docker.conf
+        mode: "0644"
+        content: |
+          [INCLUDES]
+          before = iptables-common.conf
+
+          [Definition]
+          actionstart = <iptables> -N f2b-<name>
+                        <iptables> -A f2b-<name> -j <returntype>
+                        <iptables> -I DOCKER-USER -p <protocol> -j f2b-<name>
+
+          actionstop = <iptables> -D DOCKER-USER -p <protocol> -j f2b-<name>
+                       <iptables> -F f2b-<name>
+                       <iptables> -X f2b-<name>
+
+          actioncheck = <iptables> -n -L DOCKER-USER | grep -q 'f2b-<name>[ \t]'
+
+          actionban = <iptables> -I f2b-<name> 1 -s <ip> -j <blocktype>
+
+          actionunban = <iptables> -D f2b-<name> -s <ip> -j <blocktype>
+
+          [Init]
+          name = default
+          protocol = tcp
+          chain = DOCKER-USER
+      notify: Reload fail2ban
+
+    # -----------------------------------------------------------------------
+    # Filters
+    # nginx-http-auth and nginx-botsearch ship with fail2ban; the two below
+    # either do not ship or need explicit content for clarity.
+    # -----------------------------------------------------------------------
+    - name: Deploy nginx-limit-req filter
+      ansible.builtin.copy:
+        dest: /etc/fail2ban/filter.d/nginx-limit-req.conf
+        mode: "0644"
+        content: |
+          # Matches nginx rate-limit rejections in error.log
+          [Definition]
+          failregex = ^\s*\[error\] \d+#\d+: \*\d+ limiting requests, excess: [\d\.]+ by zone "[^"]+", client: <HOST>,
+          ignoreregex =
+      notify: Reload fail2ban
+
+    - name: Deploy nginx-noscript filter
+      ansible.builtin.copy:
+        dest: /etc/fail2ban/filter.d/nginx-noscript.conf
+        mode: "0644"
+        content: |
+          # Catches requests probing for executable scripts (PHP, ASP, CGI, etc.)
+          [Definition]
+          failregex = ^ <HOST> -.*"(?:GET|POST|HEAD) [^"]*\.(php|asp|aspx|exe|pl|cgi|scgi|jsp)[^"]*" \d
+          ignoreregex =
+      notify: Reload fail2ban
+
+    # -----------------------------------------------------------------------
+    # Jails
+    # -----------------------------------------------------------------------
+    - name: Deploy nginx jail configuration
+      ansible.builtin.copy:
+        dest: /etc/fail2ban/jail.d/nginx.conf
+        mode: "0644"
+        content: |
+          # --- Basic authentication failures (error.log) --------------------
+          [nginx-http-auth]
+          enabled  = true
+          filter   = nginx-http-auth
+          port     = http,https
+          logpath  = {{ nginx_log_path }}/error.log
+          maxretry = {{ fail2ban_maxretry }}
+          bantime  = {{ fail2ban_bantime }}
+          findtime = {{ fail2ban_findtime }}
+          ignoreip = {{ fail2ban_ignoreip }}
+          action   = iptables-docker[name=nginx-http-auth, port="80,443", protocol=tcp]
+
+          # --- Rate-limit violations (error.log) ----------------------------
+          [nginx-limit-req]
+          enabled  = true
+          filter   = nginx-limit-req
+          port     = http,https
+          logpath  = {{ nginx_log_path }}/error.log
+          maxretry = 10
+          bantime  = {{ fail2ban_bantime }}
+          findtime = {{ fail2ban_findtime }}
+          ignoreip = {{ fail2ban_ignoreip }}
+          action   = iptables-docker[name=nginx-limit-req, port="80,443", protocol=tcp]
+
+          # --- Bot scanners (access.log) ------------------------------------
+          [nginx-botsearch]
+          enabled  = true
+          filter   = nginx-botsearch
+          port     = http,https
+          logpath  = {{ nginx_log_path }}/access.log
+          maxretry = 2
+          bantime  = 24h
+          findtime = 1h
+          ignoreip = {{ fail2ban_ignoreip }}
+          action   = iptables-docker[name=nginx-botsearch, port="80,443", protocol=tcp]
+
+          # --- Script/exploit probes (access.log) --------------------------
+          [nginx-noscript]
+          enabled  = true
+          filter   = nginx-noscript
+          port     = http,https
+          logpath  = {{ nginx_log_path }}/access.log
+          maxretry = {{ fail2ban_maxretry }}
+          bantime  = {{ fail2ban_bantime }}
+          findtime = {{ fail2ban_findtime }}
+          ignoreip = {{ fail2ban_ignoreip }}
+          action   = iptables-docker[name=nginx-noscript, port="80,443", protocol=tcp]
+      notify: Reload fail2ban
+
+    # -----------------------------------------------------------------------
+    # sshd jail — override Debian's defaults-debian.conf which enables sshd
+    # but assumes /var/log/auth.log. On systemd-based Debian, SSH logs go to
+    # the journal; setting backend = systemd fixes the "no log file" error.
+    # sshd traffic goes directly to the host (not through Docker), so the
+    # standard iptables action on INPUT is correct here.
+    # -----------------------------------------------------------------------
+    - name: Deploy sshd jail configuration
+      ansible.builtin.copy:
+        dest: /etc/fail2ban/jail.d/sshd.conf
+        mode: "0644"
+        content: |
+          [sshd]
+          enabled  = true
+          backend  = systemd
+          maxretry = {{ fail2ban_maxretry }}
+          bantime  = {{ fail2ban_bantime }}
+          findtime = {{ fail2ban_findtime }}
+          ignoreip = {{ fail2ban_ignoreip }}
+      notify: Reload fail2ban
+
+    - name: Enable and start fail2ban
+      ansible.builtin.systemd:
+        name: fail2ban
+        enabled: true
+        state: started
+
+  handlers:
+    - name: Reload fail2ban
+      ansible.builtin.systemd:
+        name: fail2ban
+        state: reloaded
