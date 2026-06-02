@@ -1,0 +1,40 @@
+- hosts: localhost
+  become: yes
+  tasks:
+
+  - name: Create network if it doesn't exist
+    community.docker.docker_network:
+      name: "{{ network }}"
+
+  - name: Stop and remove neko container
+    community.docker.docker_container:
+      container_default_behavior: no_defaults
+      name: neko
+      image: ghcr.io/m1k1o/neko/firefox:latest
+      state: absent
+      keep_volumes: true
+      force_kill: true
+
+  - name: Run neko container
+    community.docker.docker_container:
+      container_default_behavior: no_defaults
+      name: neko
+      image: ghcr.io/m1k1o/neko/firefox:latest
+      hostname: neko_host
+      state: started
+      restart_policy: always
+      shm_size: 2gb
+      capabilities:
+        - SYS_ADMIN
+      published_ports:
+        - 0.0.0.0:8080:8080
+        - 0.0.0.0:52000-52100:52000-52100/udp
+      networks:
+        - name: "{{ network }}"
+      env:
+        NEKO_SCREEN: '1280x720@30'
+        NEKO_PASSWORD: "{{ pwd }}"
+        NEKO_PASSWORD_ADMIN: "{{ pwd }}"
+        NEKO_EPR: '52000-52100'
+        NEKO_ICELITE: 'true'
+        TZ: 'Europe/Paris'
