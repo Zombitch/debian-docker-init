@@ -20,6 +20,9 @@ Run following ansible script :
 * To run mongodb :
 > ansible-playbook mongo.yml --extra-vars "user=YOUR_MONGO_USER pwd=YOUR_MONGO_PWD network=YOUR_NETWORK_NAME"
 
+* To run Neko (m1k1o virtual browser) :
+> ansible-playbook neko.yml --extra-vars "pwd=YOUR_NEKO_PWD admin_pwd=YOUR_NEKO_ADMIN_PWD network=YOUR_NETWORK_NAME"
+
 ## SSL Certificate
 
 Add the following command to a CRON task :
