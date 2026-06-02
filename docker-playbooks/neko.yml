@@ -23,7 +23,7 @@
       hostname: neko_host
       state: started
       restart_policy: always
-      shm_size: 2gb
+      shm_size: 2GB
       capabilities:
         - SYS_ADMIN
       published_ports:
