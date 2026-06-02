@@ -34,7 +34,7 @@
       env:
         NEKO_SCREEN: '1280x720@30'
         NEKO_PASSWORD: "{{ pwd }}"
-        NEKO_PASSWORD_ADMIN: "{{ admin_pwd }}"
+        NEKO_PASSWORD_ADMIN: "{{ pwd }}"
         NEKO_EPR: '52000-52100'
         NEKO_ICELITE: 'true'
         TZ: 'Europe/Paris'
