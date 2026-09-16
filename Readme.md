@@ -25,9 +25,13 @@ Run following ansible script :
 
 ## SSL Certificate
 
+Generate a new certificat : 
+
+> request-new-certificat.sh mydomain.com
+
 Add the following command to a CRON task :
 
-> 0 1 * * * docker run -it --rm -v "/var/lib/docker/volumes/nginx_data/_data/conf.d:/etc/letsencrypt" certbot/certbot renew
+> 5 3 * * * docker run --rm -v "/var/lib/docker/volumes/nginx_data/_data/letsencrypt:/etc/letsencrypt" -v "/var/lib/docker/volumes/nginx_data/_data/letsencrypt-lib:/var/lib/letsencrypt" -v "/var/lib/docker/volumes/nginx_data/_data/www/certbot:/etc/nginx/www/certbot" certbot/certbot:latest renew --no-random-sleep-on-renew --quiet
 
 ## FAQ
 
