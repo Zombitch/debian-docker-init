@@ -6,9 +6,9 @@ In command line terminal, run :
 
 > sudo bash
 
->chmod a+x ./init.sh
+> chmod a+x ./init.sh
 
->./init.sh
+> ./init.sh
 
 ## Ansible scripts
 
@@ -28,6 +28,29 @@ Run following ansible script :
 Generate a new certificat : 
 
 > request-new-certificat.sh mydomain.com
+
+Create a new www director for certbot in nginx : 
+
+> mkdir -p /var/lib/docker/volumes/nginx_data/_data/www/certbot/.well-known/acme-challenge
+
+Add a certbot.conf in nginx conf.d/ folder : 
+
+> server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+    # Certbot/ACME challenge for any domain
+    location /.well-known/acme-challenge/ {
+        root /etc/nginx/www/certbot;
+        allow all;
+    }
+
+    # Everything else can go wherever you want
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
 
 Add the following command to a CRON task :
 
