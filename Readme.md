@@ -35,22 +35,22 @@ Create a new www director for certbot in nginx :
 
 Add a certbot.conf in nginx conf.d/ folder : 
 
-> server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name _;
-
-    # Certbot/ACME challenge for any domain
-    location /.well-known/acme-challenge/ {
-        root /etc/nginx/www/certbot;
-        allow all;
-    }
-
-    # Everything else can go wherever you want
-    location / {
-        return 301 https://$host$request_uri;
-    }
-}
+>  server {
+>    listen 80 default_server;
+>    listen [::]:80 default_server;
+>    server_name _;
+>
+>    # Certbot/ACME challenge for any domain
+>    location /.well-known/acme-challenge/ {
+>        root /etc/nginx/www/certbot;
+>        allow all;
+>    }
+>
+>    # Everything else can go wherever you want
+>    location / {
+>        return 301 https://$host$request_uri;
+>    }
+> }
 
 Add the following command to a CRON task :
 
