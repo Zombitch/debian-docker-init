@@ -1,14 +1,24 @@
 ---
-# Mock REST API from /data/db_mock.json (must exist and be writable by uid 1000).
+# Mock REST API served from /data/json-server/db.json (create it first; it is chowned to uid 1000).
+# The whole directory is mounted (not just the file): json-server writes a temp file and renames it.
 - name: Deploy json-server
   hosts: docker_hosts
   gather_facts: false
   become: true
   vars:
-    json_server_db: "{{ data_dir }}/db_mock.json"
+    json_server_dir: "{{ data_dir }}/json-server"
+    json_server_db: "{{ json_server_dir }}/db.json"
     json_server_host_port: 2350
 
   tasks:
+    - name: Create json-server data folder
+      ansible.builtin.file:
+        path: "{{ json_server_dir }}"
+        state: directory
+        owner: "1000"
+        group: "1000"
+        mode: "0755"
+
     - name: Check the database file exists
       ansible.builtin.stat:
         path: "{{ json_server_db }}"
@@ -16,8 +26,15 @@
 
     - name: Fail without a database file
       ansible.builtin.fail:
-        msg: "{{ json_server_db }} not found (create it, e.g. echo '{\"posts\": []}' > {{ json_server_db }}; chown 1000 on it)"
+        msg: "{{ json_server_db }} not found (create it, e.g. echo '{\"posts\": []}' > {{ json_server_db }})"
       when: not db.stat.exists
+
+    - name: Make the database writable by the container user
+      ansible.builtin.file:
+        path: "{{ json_server_db }}"
+        owner: "1000"
+        group: "1000"
+        mode: "0644"
 
     - name: Create docker network
       community.docker.docker_network:
@@ -36,7 +53,7 @@
         published_ports:
           - "{{ bind_address }}:{{ json_server_host_port }}:80"
         volumes:
-          - "{{ json_server_db }}:/data/db.json"
+          - "{{ json_server_dir }}:/data"
         networks:
           - name: "{{ network }}"
         security_opts:

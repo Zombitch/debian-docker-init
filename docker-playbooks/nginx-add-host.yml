@@ -46,20 +46,27 @@
             argv: [sh, -c, "nginx -t && nginx -s reload"]
           changed_when: true
           when: vhost is changed
+
+        - name: Remove the backup of the previous vhost
+          ansible.builtin.file:
+            path: "{{ vhost.backup_file }}"
+            state: absent
+          when: vhost.backup_file is defined
       rescue:
+        # Only touch the vhost if the template task actually changed it.
         - name: Restore previous vhost
           ansible.builtin.copy:
             src: "{{ vhost.backup_file }}"
             dest: "{{ vhost_path }}"
             remote_src: true
             mode: "0644"
-          when: vhost.backup_file is defined
+          when: vhost is defined and vhost.changed | default(false) and vhost.backup_file is defined
 
         - name: Remove the new vhost (there was no previous one)
           ansible.builtin.file:
             path: "{{ vhost_path }}"
             state: absent
-          when: vhost.backup_file is not defined
+          when: vhost is defined and vhost.changed | default(false) and vhost.backup_file is not defined
 
         - name: Abort
           ansible.builtin.fail:

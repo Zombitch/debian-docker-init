@@ -14,8 +14,27 @@
   vars:
     mongo_data_dir: "{{ data_dir }}/mongo"
     mongo_host_port: 2400
+    # Set to true once you checked the data files are compatible with mongo_image.
+    mongo_allow_image_change: false
 
   tasks:
+    # MongoDB data cannot be downgraded: the old playbook ran the untagged (latest) image.
+    - name: Look for an existing mongodb container
+      community.docker.docker_container_info:
+        name: mongodb
+      register: mongo_existing
+
+    - name: Refuse to silently change the MongoDB version of existing data
+      ansible.builtin.assert:
+        that: >-
+          not mongo_existing.exists
+          or mongo_existing.container.Config.Image == mongo_image
+          or mongo_allow_image_change | bool
+        fail_msg: >-
+          Existing container runs {{ mongo_existing.container.Config.Image | default('?') }}, this playbook wants {{ mongo_image }}.
+          Check the current version (docker exec mongodb mongosh --quiet --eval 'db.version()'), set mongo_image in
+          group_vars/all.yml to match it, or pass -e mongo_allow_image_change=true.
+
     - name: Create docker network
       community.docker.docker_network:
         name: "{{ network }}"

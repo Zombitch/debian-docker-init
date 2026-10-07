@@ -32,6 +32,7 @@ docker run --rm \
   --cert-name "${DOMAIN}" \
   "${DOMAINS[@]}" \
   --keep-until-expiring \
+  --expand \
   --agree-tos \
   --email "${CERTBOT_EMAIL}" \
   --non-interactive \

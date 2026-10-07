@@ -1,6 +1,8 @@
 # {{ ansible_managed }}
 FROM {{ code_server_image }}
 
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 ARG NODE_VERSION={{ code_server_node_version }}
 ARG NVM_VERSION={{ code_server_nvm_version }}
 ENV NVM_DIR=/usr/local/nvm

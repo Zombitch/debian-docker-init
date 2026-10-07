@@ -1,5 +1,7 @@
 ---
 extends: default
+ignore: |
+  collections/
 rules:
   line-length:
     max: 160

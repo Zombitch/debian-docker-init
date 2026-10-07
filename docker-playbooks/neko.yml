@@ -47,6 +47,7 @@
           NEKO_MEMBER_MULTIUSER_ADMIN_PASSWORD: "{{ admin_pwd }}"
           NEKO_WEBRTC_EPR: "{{ neko_udp_range }}"
           NEKO_WEBRTC_ICELITE: "true"
+          NEKO_SERVER_PROXY: "true"
           TZ: "{{ timezone }}"
         log_driver: json-file
         log_options:
