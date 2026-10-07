@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+# Port 80: serve ACME http-01 challenges, redirect everything else to HTTPS.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+    location /.well-known/acme-challenge/ {
+        root /etc/nginx/www/certbot;
+        allow all;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}

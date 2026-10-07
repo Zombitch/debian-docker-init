@@ -1,0 +1,57 @@
+---
+# Usage: ansible-playbook docker-playbooks/mongodb.yml   (prompts for user/password unless passed with -e)
+- name: Deploy MongoDB
+  hosts: docker_hosts
+  gather_facts: false
+  become: true
+  vars_prompt:
+    - name: user
+      prompt: MongoDB root user
+      private: false
+    - name: pwd
+      prompt: MongoDB root password
+      private: true
+  vars:
+    mongo_data_dir: "{{ data_dir }}/mongo"
+    mongo_host_port: 2400
+
+  tasks:
+    - name: Create docker network
+      community.docker.docker_network:
+        name: "{{ network }}"
+
+    - name: Create mongo data folder
+      ansible.builtin.file:
+        path: "{{ mongo_data_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Run mongo container
+      community.docker.docker_container:
+        name: mongodb
+        image: "{{ mongo_image }}"
+        pull: missing
+        state: started
+        restart_policy: unless-stopped
+        published_ports:
+          - "{{ bind_address }}:{{ mongo_host_port }}:27017"
+        volumes:
+          - "{{ mongo_data_dir }}:/data/db"
+        networks:
+          - name: "{{ network }}"
+        security_opts:
+          - no-new-privileges:true
+        env:
+          MONGO_INITDB_ROOT_USERNAME: "{{ user }}"
+          MONGO_INITDB_ROOT_PASSWORD: "{{ pwd }}"
+        healthcheck:
+          test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
+          start_period: 30s
+        log_driver: json-file
+        log_options:
+          max-size: 10m
+          max-file: "3"
+      no_log: true

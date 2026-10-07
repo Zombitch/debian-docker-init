@@ -1,0 +1,29 @@
+---
+# Shared defaults. Override with -e, host_vars or an ansible-vault file.
+
+# Docker network every service joins (created by nginx.yml / the services).
+network: dmz_network
+timezone: Europe/Paris
+
+# Where generated Dockerfiles / configs live on the host.
+data_dir: /data
+
+# Published ports of internal services are bound here. Docker bypasses
+# ufw/nftables for published ports, so keep 127.0.0.1 unless you really want
+# a service reachable from the internet. nginx reaches containers over the
+# docker network and does not need host ports.
+bind_address: 127.0.0.1
+
+# Pinned images (bump deliberately, or let Renovate/Dependabot do it).
+nginx_image: "nginx:1.30"
+mongo_image: "mongo:8.0"
+neko_image: "ghcr.io/m1k1o/neko/firefox:3.1"
+code_server_image: "linuxserver/code-server:4.140.0"
+keeweb_image: "antelle/keeweb:1.18.7"
+json_server_node_image: "node:22-alpine"
+eva_node_image: "node:22-alpine"
+certbot_image: "certbot/certbot:v5.8.0"
+
+# Host path of the nginx named volume (used to drop vhost files / certificates).
+nginx_volume: nginx_data
+nginx_volume_path: "/var/lib/docker/volumes/{{ nginx_volume }}/_data"

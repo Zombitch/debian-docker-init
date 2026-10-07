@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+FROM {{ code_server_image }}
+
+ARG NODE_VERSION={{ code_server_node_version }}
+ARG NVM_VERSION={{ code_server_nvm_version }}
+ENV NVM_DIR=/usr/local/nvm
+ENV PATH=/usr/local/nvm/versions/node/v${NODE_VERSION}/bin:${PATH}
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl wget iputils-ping telnet \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p "$NVM_DIR" \
+    && curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash \
+    && . "$NVM_DIR/nvm.sh" \
+    && nvm install "$NODE_VERSION" \
+    && npm install -g @angular/cli @nestjs/cli \
+    && npm cache clean --force

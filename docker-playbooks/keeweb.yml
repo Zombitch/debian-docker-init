@@ -1,83 +1,47 @@
-- hosts: localhost
-  become: yes
+---
+# Reach it through nginx: ansible-playbook docker-playbooks/nginx-add-host.yml -e domain=... -e docker_host=keeweb_host:80
+- name: Deploy KeeWeb
+  hosts: docker_hosts
+  gather_facts: true
+  become: true
+  vars:
+    keeweb_conf_dir: "{{ data_dir }}/keeweb"
+
   tasks:
+    - name: Create docker network
+      community.docker.docker_network:
+        name: "{{ network }}"
 
-  - name: Create keeweb volume
-    community.docker.docker_volume:
-      name: keeweb_data
+    - name: Create keeweb config folder
+      ansible.builtin.file:
+        path: "{{ keeweb_conf_dir }}"
+        state: directory
+        mode: "0755"
 
-  - name: Delete previous antelle/keeweb image
-    community.docker.docker_image:
-      name: antelle/keeweb
-      state: absent
-      force_absent: true
+    # Mounted over the image's nginx site instead of editing a docker volume on the host.
+    - name: Write keeweb nginx site (listen on port 80 inside the container)
+      ansible.builtin.template:
+        src: keeweb.conf.j2
+        dest: "{{ keeweb_conf_dir }}/keeweb.conf"
+        mode: "0644"
+      register: keeweb_conf
 
-  - name: Remove keeweb container
-    community.docker.docker_container:
-      container_default_behavior: no_defaults
-      name: keeweb
-      state: absent
-      force_kill: true
-
-  - name: Run keeweb container
-    community.docker.docker_container:
-      container_default_behavior: no_defaults
-      name: keeweb
-      image: antelle/keeweb
-      hostname: keeweb_host
-      state: started
-      restart_policy: always
-      exposed_ports :
-        - 0.0.0.0:80:80
-      volumes:
-        - keeweb_data:/etc/nginx
-      networks:
-        - name: "dmz_network"
-
-  - name: Stop antelle/keeweb container
-    community.docker.docker_container:
-      name: keeweb
-      state: stopped
-      force_kill: true
-
-  - name: Delete keeweb.conf for embedded nginx
-    file:
-      path: /var/lib/docker/volumes/keeweb_data/_data/conf.d/keeweb.conf
-      state: absent
-
-  - name: ReWrite keeweb.conf to enable port 80
-    ansible.builtin.blockinfile:
-      path: /var/lib/docker/volumes/keeweb_data/_data/conf.d/keeweb.conf
-      create: true
-      mode: a+rwx
-      block: |
-        server {
-            listen       80;
-            listen  [::]:80;
-            root /keeweb;
-            index index.html;
-            server_name  localhost;
-
-            location / {
-                try_files $uri $uri/ =404;
-            }
-            
-            location ~ /\. {
-                deny all;
-            }
-        }
-      state: present
-
-  - name: Restart keeweb container
-    community.docker.docker_container:
-      container_default_behavior: no_defaults
-      name: keeweb
-      hostname: keeweb_host
-      state: started
-      restart_policy: always
-      exposed_ports :
-        - 0.0.0.0:80:80
-      volumes:
-        - keeweb_data:/etc/nginx
-      networks:
-        - name: "dmz_network"
+    - name: Run keeweb container
+      community.docker.docker_container:
+        name: keeweb
+        image: "{{ keeweb_image }}"
+        pull: missing
+        hostname: keeweb_host
+        state: started
+        restart: "{{ keeweb_conf is changed }}"
+        restart_policy: unless-stopped
+        volumes:
+          - "{{ keeweb_conf_dir }}/keeweb.conf:/etc/nginx/conf.d/keeweb.conf:ro"
+        networks:
+          - name: "{{ network }}"
+        security_opts:
+          - no-new-privileges:true
+        log_driver: json-file
+        log_options:
+          max-size: 10m
+          max-file: "3"

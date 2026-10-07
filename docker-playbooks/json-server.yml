@@ -1,23 +1,48 @@
-- hosts: localhost
-  become: yes
+---
+# Mock REST API from /data/db_mock.json (must exist and be writable by uid 1000).
+- name: Deploy json-server
+  hosts: docker_hosts
+  gather_facts: false
+  become: true
+  vars:
+    json_server_db: "{{ data_dir }}/db_mock.json"
+    json_server_host_port: 2350
+
   tasks:
+    - name: Check the database file exists
+      ansible.builtin.stat:
+        path: "{{ json_server_db }}"
+      register: db
 
-  - name: Stop and remove json-server container
-    community.docker.docker_container:
-      container_default_behavior: no_defaults
-      name: json-server
-      image: clue/json-server
-      state: absent
-      keep_volumes: true
-      force_kill: true
+    - name: Fail without a database file
+      ansible.builtin.fail:
+        msg: "{{ json_server_db }} not found (create it, e.g. echo '{\"posts\": []}' > {{ json_server_db }}; chown 1000 on it)"
+      when: not db.stat.exists
 
-  - name: Run json-server container
-    community.docker.docker_container:
-      container_default_behavior: no_defaults
-      name: json-server
-      image: clue/json-server
-      state: started
-      published_ports :
-        - 0.0.0.0:2350:80
-      volumes:
-        - /data/db_mock.json:/data/db.json
+    - name: Create docker network
+      community.docker.docker_network:
+        name: "{{ network }}"
+
+    - name: Run json-server container (maintained 0.17.x release, run through npx)
+      community.docker.docker_container:
+        name: json-server
+        image: "{{ json_server_node_image }}"
+        pull: missing
+        hostname: json_server_host
+        state: started
+        restart_policy: unless-stopped
+        user: "1000:1000"
+        command: ["npx", "--yes", "json-server@0.17.4", "--host", "0.0.0.0", "--port", "80", "/data/db.json"]
+        published_ports:
+          - "{{ bind_address }}:{{ json_server_host_port }}:80"
+        volumes:
+          - "{{ json_server_db }}:/data/db.json"
+        networks:
+          - name: "{{ network }}"
+        security_opts:
+          - no-new-privileges:true
+        cap_drop: [ALL]
+        log_driver: json-file
+        log_options:
+          max-size: 10m
+          max-file: "3"

@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# Shared by every vhost: only send "Connection: upgrade" for real WebSocket requests.
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}

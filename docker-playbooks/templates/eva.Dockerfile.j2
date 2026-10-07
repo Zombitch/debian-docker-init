@@ -1,0 +1,20 @@
+# {{ ansible_managed }}
+FROM {{ eva_node_image }}
+
+ARG EVA_REF={{ eva_ref }}
+# Unpinned on purpose: must match the Angular version used by the eva project.
+RUN npm install -g @angular/cli && npm cache clean --force
+
+USER node
+WORKDIR /home/node
+RUN wget -q -O eva.zip "https://github.com/Zombitch/eva/archive/${EVA_REF}.zip" \
+    && unzip -q eva.zip \
+    && rm eva.zip \
+    && mv eva-* app \
+    && cd app \
+    && npm ci || npm install
+
+WORKDIR /home/node/app
+EXPOSE 4200
+# Development server: fine for a private tool behind nginx, not a production build.
+CMD ["ng", "serve", "--host", "0.0.0.0", "--allowed-hosts", "all"]

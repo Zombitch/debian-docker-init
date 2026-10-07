@@ -1,0 +1,49 @@
+# {{ ansible_managed }}
+# Docker published-port traffic is forwarded, not locally delivered, so the
+# bundled fail2ban nftables action hooks into 'forward' (IPv4 + IPv6 sets).
+[DEFAULT]
+bantime.increment = true
+bantime.factor = 2
+bantime.maxtime = {{ fail2ban_bantime_max }}
+bantime.overalljails = true
+
+[nginx-http-auth]
+enabled  = true
+filter   = nginx-http-auth
+logpath  = {{ nginx_log_path }}/error.log
+maxretry = {{ fail2ban_maxretry }}
+bantime  = {{ fail2ban_bantime }}
+findtime = {{ fail2ban_findtime }}
+ignoreip = {{ fail2ban_ignoreip }}
+action   = nftables[name=nginx-http-auth, type=allports, chain_hook=forward, blocktype=drop]
+
+[nginx-limit-req]
+enabled  = true
+filter   = nginx-limit-req
+logpath  = {{ nginx_log_path }}/error.log
+maxretry = 10
+bantime  = {{ fail2ban_bantime }}
+findtime = {{ fail2ban_findtime }}
+ignoreip = {{ fail2ban_ignoreip }}
+action   = nftables[name=nginx-limit-req, type=allports, chain_hook=forward, blocktype=drop]
+
+[nginx-botsearch]
+enabled  = true
+filter   = nginx-botsearch
+logpath  = {{ nginx_log_path }}/access.log
+           {{ nginx_log_path }}/error.log
+maxretry = 2
+bantime  = 24h
+findtime = 1h
+ignoreip = {{ fail2ban_ignoreip }}
+action   = nftables[name=nginx-botsearch, type=allports, chain_hook=forward, blocktype=drop]
+
+[nginx-noscript]
+enabled  = true
+filter   = nginx-noscript
+logpath  = {{ nginx_log_path }}/access.log
+maxretry = {{ fail2ban_maxretry }}
+bantime  = {{ fail2ban_bantime }}
+findtime = {{ fail2ban_findtime }}
+ignoreip = {{ fail2ban_ignoreip }}
+action   = nftables[name=nginx-noscript, type=allports, chain_hook=forward, blocktype=drop]

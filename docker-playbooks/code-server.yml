@@ -1,77 +1,69 @@
-- hosts: localhost
-  become: yes
+---
+# Reach it through nginx: -e domain=... -e docker_host=codeserver_host:8443 (WebSocket headers are in the vhost template)
+- name: Deploy code-server
+  hosts: docker_hosts
+  gather_facts: true
+  become: true
+  vars_prompt:
+    - name: pwd
+      prompt: code-server password
+      private: true
+  vars:
+    code_server_dir: "{{ data_dir }}/code-server/docker"
+    code_server_node_version: "22.14.0"
+    code_server_nvm_version: "0.40.1"
+    code_server_local_image: mvs/code-server
+
   tasks:
+    - name: Create docker network
+      community.docker.docker_network:
+        name: "{{ network }}"
 
-  - name: Create code-server data folder
-    file:
-      path: /data/code-server/docker
-      state: directory
+    - name: Create code-server volume
+      community.docker.docker_volume:
+        name: codeserver_data
 
-  - name: Create codeserver volume
-    community.docker.docker_volume:
-      name: codeserver_data
+    - name: Create code-server build folder
+      ansible.builtin.file:
+        path: "{{ code_server_dir }}"
+        state: directory
+        mode: "0755"
 
-  - name: Delete Dockerfile
-    file:
-      path: /data/code-server/docker/Dockerfile
-      state: absent
+    - name: Write Dockerfile
+      ansible.builtin.template:
+        src: code-server.Dockerfile.j2
+        dest: "{{ code_server_dir }}/Dockerfile"
+        mode: "0644"
 
-  - name: Write docker file
-    ansible.builtin.blockinfile:
-      path: /data/code-server/docker/Dockerfile
-      create: true
-      mode: a+rwx
-      block: |
-        FROM linuxserver/code-server
-        RUN apt-get update
-        RUN apt-get install nodejs -y
-        RUN apt-get install npm -y
-        RUN apt-get install iputils-ping -y
-        RUN apt-get install telnet -y
-        RUN apt-get install wget -y
-        ENV NVM_DIR /usr/local/nvm
-        ENV NODE_VERSION v22.14.0
-        RUN mkdir -p /usr/local/nvm && apt-get update && echo "y" | apt-get install curl
-        RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-        RUN /bin/bash -c "source $NVM_DIR/nvm.sh && nvm install $NODE_VERSION && nvm use --delete-prefix $NODE_VERSION"
-        ENV NODE_PATH $NVM_DIR/versions/node/$NODE_VERSION/bin
-        ENV PATH $NODE_PATH:$PATH
-        RUN npm install -g @angular/cli
-        RUN npm install -g @nestjs/cli
-      state: present
+    # Layer cache keeps unchanged builds fast; the container is only recreated if the image changed.
+    - name: Build image
+      community.docker.docker_image_build:
+        name: "{{ code_server_local_image }}"
+        path: "{{ code_server_dir }}"
+        rebuild: always
+        pull: true
 
-  - name: Delete previous image
-    community.docker.docker_image:
-      name: mvs/code-server
-      state: absent
-      force_absent: true
-
-  - name: Create an image
-    community.docker.docker_image:
-      name: mvs/code-server
-      source: build
-      build:
-        path: /data/code-server/docker
-
-  - name: Run code-server container
-    community.docker.docker_container:
-      container_default_behavior: no_defaults
-      name: code-server
-      image: mvs/code-server
-      hostname: codeserver_host
-      state: started
-      restart_policy: always
-      exposed_ports :
-        - 8443
-        - 4000
-        - 4200
-      volumes:
-        - codeserver_data:/config
-      networks:
-        - name: "{{ network }}"
-      env:
-        PUID: '1000'
-        PGID: '1000'
-        SUDO_PASSWORD: "{{ pwd }}"
-        PASSWORD: "{{ pwd }}"
-        TZ: 'Europe/Paris'
+    - name: Run code-server container
+      community.docker.docker_container:
+        name: code-server
+        image: "{{ code_server_local_image }}"
+        pull: never
+        hostname: codeserver_host
+        state: started
+        restart_policy: unless-stopped
+        volumes:
+          - codeserver_data:/config
+        networks:
+          - name: "{{ network }}"
+        # No no-new-privileges here: the integrated terminal relies on sudo (SUDO_PASSWORD).
+        env:
+          PUID: "1000"
+          PGID: "1000"
+          TZ: "{{ timezone }}"
+          PASSWORD: "{{ pwd }}"
+          SUDO_PASSWORD: "{{ pwd }}"
+        log_driver: json-file
+        log_options:
+          max-size: 10m
+          max-file: "3"
+      no_log: true

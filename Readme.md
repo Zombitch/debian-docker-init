@@ -1,71 +1,84 @@
-# Debian with Docker & Ansible 
+# Debian with Docker & Ansible
 
-## Installation steps
+Bootstrap a Debian 12/13 host with Docker and deploy self-hosted services behind an nginx reverse proxy (TLS via Let's Encrypt, protected by fail2ban).
 
-In command line terminal, run :
+## Installation
 
-> sudo bash
+```bash
+sudo ./init.sh
+```
 
-> chmod a+x ./init.sh
+This installs Docker CE (official repo), Ansible, `python3-docker`, and the pinned collections from `requirements.yml` into `./collections`.
 
-> ./init.sh
+Run every playbook **from the repository root** so `ansible.cfg`, `inventory.ini` and `group_vars/all.yml` are picked up.
 
-## Ansible scripts
+## Configuration
 
-Run following ansible script :
+Shared defaults live in `group_vars/all.yml`: docker network (`dmz_network`), timezone, data directory, **pinned image versions**, and `bind_address`.
 
-* To run json-server :
-> ansible-playbook json-server.yml
+* Internal services (MongoDB, json-server, eva) publish their port on `127.0.0.1` only. Docker bypasses ufw/nftables for published ports, so never publish to `0.0.0.0` unless you intend to. Expose services through nginx instead (they share the docker network).
+* Passwords are prompted for (hidden) when not supplied; they are never echoed and the tasks that carry them use `no_log`. You can also pass them with `-e` or an `ansible-vault` file.
 
-* To run mongodb :
-> ansible-playbook mongo.yml --extra-vars "user=YOUR_MONGO_USER pwd=YOUR_MONGO_PWD network=YOUR_NETWORK_NAME"
+## Playbooks
 
-* To run Neko (m1k1o virtual browser) :
-> ansible-playbook neko.yml --extra-vars "pwd=YOUR_NEKO_PWD admin_pwd=YOUR_NEKO_ADMIN_PWD network=YOUR_NETWORK_NAME"
+| Playbook | Purpose | Reverse-proxy target (`docker_host`) |
+|---|---|---|
+| `nginx.yml` | nginx + ACME/redirect on port 80 + fail2ban + logrotate | – |
+| `nginx-add-host.yml` | HTTPS vhost for a domain (validated, rolled back on error) | – |
+| `keeweb.yml` | KeeWeb | `keeweb_host:80` |
+| `code-server.yml` | VS Code in the browser | `codeserver_host:8443` |
+| `neko.yml` | Neko virtual browser (web UI via nginx, WebRTC UDP 52000-52100 published) | `neko_host:8080` |
+| `mongodb.yml` | MongoDB | – (`mongodb:27017` on the network) |
+| `json-server.yml` | Mock REST API from `/data/db_mock.json` | `json_server_host:80` |
+| `eva.yml` | eva (Angular dev server) | `eva_host:4200` |
 
-## SSL Certificate
+```bash
+ansible-playbook docker-playbooks/nginx.yml
+ansible-playbook docker-playbooks/mongodb.yml
+ansible-playbook docker-playbooks/neko.yml
+```
 
-Generate a new certificat : 
+## HTTPS for a new domain
 
-> request-new-certificat.sh mydomain.com
+1. Deploy nginx once (`nginx.yml`). It serves the ACME challenge on port 80 and redirects everything else to HTTPS.
+2. Request the certificate (add `--www` to include `www.<domain>`):
 
-Create a new www director for certbot in nginx : 
+   ```bash
+   CERTBOT_EMAIL=you@example.com ./request-new-certificate.sh app.example.com
+   ```
 
-> mkdir -p /var/lib/docker/volumes/nginx_data/_data/www/certbot/.well-known/acme-challenge
+3. Create the vhost:
 
-Add a certbot.conf in nginx conf.d/ folder : 
+   ```bash
+   ansible-playbook docker-playbooks/nginx-add-host.yml -e domain=app.example.com -e docker_host=keeweb_host:80
+   ```
 
-  server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name _;
+4. Renewal — certificates must be renewed **and nginx reloaded** (nginx keeps certificates in memory). Add to cron:
 
-    # Certbot/ACME challenge for any domain
-    location /.well-known/acme-challenge/ {
-        root /etc/nginx/www/certbot;
-        allow all;
-    }
+   ```cron
+   5 3 * * * /opt/debian-docker-init/renew-certificates.sh
+   ```
 
-    # Everything else can go wherever you want
-    location / {
-        return 301 https://$host$request_uri;
-    }
-    }
+Certificates are stored in `<nginx_data volume>/letsencrypt`; vhosts load them from `/etc/nginx/letsencrypt/live/<domain>/`.
 
-Add the following command to a CRON task :
+## Security notes
 
-> 5 3 * * * docker run --rm -v "/var/lib/docker/volumes/nginx_data/_data/letsencrypt:/etc/letsencrypt" -v "/var/lib/docker/volumes/nginx_data/_data/letsencrypt-lib:/var/lib/letsencrypt" -v "/var/lib/docker/volumes/nginx_data/_data/www/certbot:/etc/nginx/www/certbot" certbot/certbot:latest renew --no-random-sleep-on-renew --quiet
+* fail2ban jails (`nginx-http-auth`, `nginx-limit-req`, `nginx-botsearch`, `nginx-noscript`) ban via nftables on the `forward` hook (needed for Docker traffic), IPv4 and IPv6, with incremental ban times. Set `fail2ban_ignoreip` in `nginx.yml` to your admin IP.
+* Only the nginx playbook publishes ports 80/443 publicly.
+
+## Linting
+
+CI runs `yamllint`, `ansible-lint` and `shellcheck` (`.github/workflows/lint.yml`). Locally:
+
+```bash
+pip install ansible-core ansible-lint yamllint
+yamllint . && ansible-lint docker-playbooks && shellcheck *.sh
+```
 
 ## FAQ
 
-Q: Getting error when accessing Code Editor : "websockets closed with close code 1006"
-R : Use the following nginx conf :
-location / {
-        proxy_pass http://codeserver_host:8443/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "Upgrade";
-    }
+Q: "websockets closed with close code 1006" when accessing the code editor.
+R: Use `nginx-add-host.yml`: the generated vhost already forwards the `Upgrade`/`Connection` headers.
+
+Q: Upgrading from the previous version of these playbooks?
+R: `mongdb.yml` is now `mongodb.yml`; `request-new-certificat.sh` is now `request-new-certificate.sh` (email via `CERTBOT_EMAIL`, no more `--force-renewal`); `certbot-init-ssl-cert.sh` was removed (it used a different certificate directory than the rest); the manual certbot.conf step is now done by `nginx.yml`. Existing vhosts must be regenerated with `nginx-add-host.yml` (certificate path moved to `/etc/nginx/letsencrypt/live/...`). The orphan `keeweb_data` volume can be removed.

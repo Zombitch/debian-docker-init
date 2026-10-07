@@ -1,55 +1,56 @@
-- hosts: localhost
-  become: yes
+---
+- name: Deploy eva
+  hosts: docker_hosts
+  gather_facts: true
+  become: true
+  vars:
+    eva_dir: "{{ data_dir }}/eva/docker"
+    eva_ref: main
+    eva_local_image: mvs/eva
+    eva_host_port: 4210
+
   tasks:
+    - name: Create docker network
+      community.docker.docker_network:
+        name: "{{ network }}"
 
-  - name: Create eva data folder
-    file:
-      path: /data/eva/docker
-      state: directory
+    - name: Create eva build folder
+      ansible.builtin.file:
+        path: "{{ eva_dir }}"
+        state: directory
+        mode: "0755"
 
-  - name: Delete Dockerfile
-    file:
-      path: /data/eva/docker/Dockerfile
-      state: absent
+    - name: Write Dockerfile
+      ansible.builtin.template:
+        src: eva.Dockerfile.j2
+        dest: "{{ eva_dir }}/Dockerfile"
+        mode: "0644"
 
-  - name: Write docker file
-    ansible.builtin.blockinfile:
-      path: /data/eva/docker/Dockerfile
-      create: true
-      mode: a+rwx
-      block: |
-        FROM alpine
-        RUN apk add --update nodejs
-        RUN apk add --update npm
-        RUN apk add --update wget
-        RUN apk add --update unzip
-        RUN npm install -g @angular/cli
-        WORKDIR /home/alpine
-        RUN wget https://github.com/Zombitch/eva/archive/refs/heads/main.zip
-        RUN unzip main.zip
-        RUN cd eva-main && npm i
-        EXPOSE 4200
-        CMD cd eva-main && ng serve --host 0.0.0.0
-      state: present
+    - name: Build image
+      community.docker.docker_image_build:
+        name: "{{ eva_local_image }}"
+        path: "{{ eva_dir }}"
+        rebuild: always
+        pull: true
+        # Set eva_ref to a tag/commit for reproducible builds; with "main" bust the cache.
+        nocache: "{{ eva_ref == 'main' }}"
 
-  - name: Delete previous image
-    community.docker.docker_image:
-      name: mvs/eva
-      state: absent
-      force_absent: true
-
-  - name: Create an image
-    community.docker.docker_image:
-      name: mvs/eva
-      source: build
-      build: 
-        path: /data/eva/docker
-
-  - name: Run eva container
-    community.docker.docker_container:
-      container_default_behavior: no_defaults
-      name: eva
-      image: mvs/eva
-      state: started
-      published_ports :
-        - 0.0.0.0:4210:4200
+    - name: Run eva container
+      community.docker.docker_container:
+        name: eva
+        image: "{{ eva_local_image }}"
+        pull: never
+        hostname: eva_host
+        state: started
+        restart_policy: unless-stopped
+        published_ports:
+          - "{{ bind_address }}:{{ eva_host_port }}:4200"
+        networks:
+          - name: "{{ network }}"
+        security_opts:
+          - no-new-privileges:true
+        cap_drop: [ALL]
+        log_driver: json-file
+        log_options:
+          max-size: 10m
+          max-file: "3"

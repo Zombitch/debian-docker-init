@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+# Requests probing for executable scripts (PHP, ASP, CGI...) in the access log.
+[Definition]
+failregex = ^<HOST> \- \S+ \[\] \"(?:GET|POST|HEAD) [^"]*\.(?:php|asp|aspx|exe|pl|cgi|scgi|jsp)(?:\?[^"]*)? \S+\" \d{3} .*$
+ignoreregex =
+datepattern = ^[^\[]*\[({DATE})
+              {^LN-BEG}

@@ -1,40 +1,55 @@
-- hosts: localhost
-  become: yes
+---
+# Usage: ansible-playbook docker-playbooks/neko.yml   (prompts for passwords unless passed with -e pwd=... admin_pwd=...)
+# Web UI is reached through nginx (docker_host=neko_host:8080); only the WebRTC UDP range is published.
+- name: Deploy Neko (m1k1o virtual browser)
+  hosts: docker_hosts
+  gather_facts: false
+  become: true
+  vars_prompt:
+    - name: pwd
+      prompt: Neko user password
+      private: true
+    - name: admin_pwd
+      prompt: Neko admin password (different from the user password)
+      private: true
+  vars:
+    neko_udp_range: "52000-52100"
+
   tasks:
+    - name: Check passwords differ
+      ansible.builtin.assert:
+        that: pwd != admin_pwd
+        fail_msg: "User and admin passwords must be different"
+      no_log: true
 
-  - name: Create network if it doesn't exist
-    community.docker.docker_network:
-      name: "{{ network }}"
+    - name: Create docker network
+      community.docker.docker_network:
+        name: "{{ network }}"
 
-  - name: Stop and remove neko container
-    community.docker.docker_container:
-      container_default_behavior: no_defaults
-      name: neko
-      image: ghcr.io/m1k1o/neko/firefox:latest
-      state: absent
-      keep_volumes: true
-      force_kill: true
-
-  - name: Run neko container
-    community.docker.docker_container:
-      container_default_behavior: no_defaults
-      name: neko
-      image: ghcr.io/m1k1o/neko/firefox:latest
-      hostname: neko_host
-      state: started
-      restart_policy: always
-      shm_size: 2GB
-      capabilities:
-        - SYS_ADMIN
-      published_ports:
-        - 0.0.0.0:8080:8080
-        - 0.0.0.0:52000-52100:52000-52100/udp
-      networks:
-        - name: "{{ network }}"
-      env:
-        NEKO_SCREEN: '1280x720@30'
-        NEKO_PASSWORD: "{{ pwd }}"
-        NEKO_PASSWORD_ADMIN: "{{ pwd }}"
-        NEKO_EPR: '52000-52100'
-        NEKO_ICELITE: 'true'
-        TZ: 'Europe/Paris'
+    - name: Run neko container
+      community.docker.docker_container:
+        name: neko
+        image: "{{ neko_image }}"
+        pull: missing
+        hostname: neko_host
+        state: started
+        restart_policy: unless-stopped
+        shm_size: 2GB
+        capabilities:
+          - SYS_ADMIN
+        published_ports:
+          - "0.0.0.0:{{ neko_udp_range }}:{{ neko_udp_range }}/udp"
+        networks:
+          - name: "{{ network }}"
+        env:
+          NEKO_DESKTOP_SCREEN: "1280x720@30"
+          NEKO_MEMBER_MULTIUSER_USER_PASSWORD: "{{ pwd }}"
+          NEKO_MEMBER_MULTIUSER_ADMIN_PASSWORD: "{{ admin_pwd }}"
+          NEKO_WEBRTC_EPR: "{{ neko_udp_range }}"
+          NEKO_WEBRTC_ICELITE: "true"
+          TZ: "{{ timezone }}"
+        log_driver: json-file
+        log_options:
+          max-size: 10m
+          max-file: "3"
+      no_log: true
