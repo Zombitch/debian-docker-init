@@ -22,4 +22,6 @@ RUN echo "refresh ${CACHEBUST}" \
     && nvm use --lts >/dev/null \
     && ln -sfn "$(dirname "$(nvm which current)")" "$NVM_DIR/current-bin" \
     && npm install -g @angular/cli @nestjs/cli \
+    && npm install -g @anthropic-ai/claude-code \
+    && npm install -g @xai-official/grok \
     && npm cache clean --force
