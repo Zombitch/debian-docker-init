@@ -16,7 +16,7 @@ Run every playbook **from the repository root** so `ansible.cfg`, `inventory.ini
 
 Shared defaults live in `group_vars/all.yml`: docker network (`dmz_network`), timezone, data directory, image references, and `bind_address`.
 
-* Internal services (MongoDB, json-server, eva) publish their port on `127.0.0.1` only. Docker bypasses ufw/nftables for published ports, so never publish to `0.0.0.0` unless you intend to. Expose services through nginx instead (they share the docker network).
+* Internal services (MongoDB, json-server) publish their port on `127.0.0.1` only. Docker bypasses ufw/nftables for published ports, so never publish to `0.0.0.0` unless you intend to. Expose services through nginx instead (they share the docker network).
 * Passwords are prompted for (hidden) when not supplied; they are never echoed and the tasks that carry them use `no_log`. You can also pass them with `-e` or an `ansible-vault` file.
 
 ## Playbooks
@@ -25,12 +25,10 @@ Shared defaults live in `group_vars/all.yml`: docker network (`dmz_network`), ti
 |---|---|---|
 | `nginx.yml` | nginx + ACME/redirect on port 80 + fail2ban + logrotate | – |
 | `nginx-add-host.yml` | HTTPS vhost for a domain (validated, rolled back on error) | – |
-| `keeweb.yml` | KeeWeb | `keeweb_host:80` |
 | `code-server.yml` | VS Code in the browser | `codeserver_host:8443` |
 | `neko.yml` | Neko virtual browser (web UI via nginx, WebRTC UDP 52000-52100 published) | `neko_host:8080` |
 | `mongodb.yml` | MongoDB | – (`mongodb:27017` on the network) |
 | `json-server.yml` | Mock REST API from `/data/db_mock.json` | `json_server_host:80` |
-| `eva.yml` | eva (Angular dev server) | `eva_host:4200` |
 
 ```bash
 ansible-playbook docker-playbooks/nginx.yml
@@ -50,7 +48,7 @@ ansible-playbook docker-playbooks/neko.yml
 3. Create the vhost:
 
    ```bash
-   ansible-playbook docker-playbooks/nginx-add-host.yml -e domain=app.example.com -e docker_host=keeweb_host:80
+   ansible-playbook docker-playbooks/nginx-add-host.yml -e domain=app.example.com -e docker_host=codeserver_host:8443
    ```
 
 4. Renewal — certificates must be renewed **and nginx reloaded** (nginx keeps certificates in memory). Add to cron:
@@ -65,12 +63,12 @@ Certificates are stored in `<nginx_data volume>/letsencrypt`; vhosts load them f
 
 Every service image follows `:latest` (Node-based ones use `node:lts-alpine`: the newest Node is a non-LTS release). **Re-running a playbook is the update**: it pulls the newest image, recreates the container only if the image or its config changed, waits until it is running and healthy (`docker-playbooks/includes/deploy_container.yml`) and, if it is not, restarts the previous image and fails the run. Nothing updates by itself; run the playbooks (or a cron job) when you want to update.
 
-* `code-server` and `eva` are built locally: the base image is always pulled and the apt/npm/Angular CLI/eva layers are refreshed once per day (`CACHEBUST`).
+* `code-server` is built locally: the base image is always pulled and the apt/npm/Angular CLI layers are refreshed once per day (`CACHEBUST`).
 * `-e prune_old_images=true` removes dangling images afterwards (host-wide, not just these services).
 * To freeze one service, replace `:latest` by a version tag in `group_vars/all.yml`.
 * **MongoDB:** data files cannot be downgraded and a new major release may need manual steps (feature compatibility version). A failed start is rolled back, but take a `mongodump` before updating.
 * Docker Hub limits anonymous pulls (100 per 6 h per IP). Every run pulls once per image, so `docker login` on busy hosts.
-* Not covered by the image tag: the json-server npm package (kept on 0.17, 1.x changed the API), the nvm installer version, and whatever Angular CLI the eva project expects.
+* Not covered by the image tag: the json-server npm package (kept on 0.17, 1.x changed the API) and the nvm installer version.
 
 ## Security notes
 
@@ -92,6 +90,6 @@ Q: "websockets closed with close code 1006" when accessing the code editor.
 R: Use `nginx-add-host.yml`: the generated vhost already forwards the `Upgrade`/`Connection` headers.
 
 Q: Upgrading from the previous version of these playbooks?
-R: `mongdb.yml` is now `mongodb.yml`; `request-new-certificat.sh` is now `request-new-certificate.sh` (email via `CERTBOT_EMAIL`, no more `--force-renewal`); `certbot-init-ssl-cert.sh` was removed (it used a different certificate directory than the rest); the manual certbot.conf step is now done by `nginx.yml`. Existing vhosts must be regenerated with `nginx-add-host.yml` (certificate path moved to `/etc/nginx/letsencrypt/live/...`). The orphan `keeweb_data` volume can be removed.
+R: `mongdb.yml` is now `mongodb.yml`; `request-new-certificat.sh` is now `request-new-certificate.sh` (email via `CERTBOT_EMAIL`, no more `--force-renewal`); `certbot-init-ssl-cert.sh` was removed (it used a different certificate directory than the rest); the manual certbot.conf step is now done by `nginx.yml`. Existing vhosts must be regenerated with `nginx-add-host.yml` (certificate path moved to `/etc/nginx/letsencrypt/live/...`). `keeweb.yml` and `eva.yml` were removed: delete their containers (`docker rm -f keeweb eva`), images and the orphan `keeweb_data` volume by hand if they are still on the host.
 
 Also: Neko's web UI is no longer published on host port 8080 (use nginx, `docker_host=neko_host:8080`). json-server now reads `/data/json-server/db.json` (move your old `/data/db_mock.json` there). Playbooks need root: run as root, or add `-K` to ask for the sudo password. The certificate scripts default to the volume path `/var/lib/docker/volumes/nginx_data/_data` (override with `NGINX_VOLUME_PATH`, `NGINX_CONTAINER`, `CERTBOT_IMAGE`).

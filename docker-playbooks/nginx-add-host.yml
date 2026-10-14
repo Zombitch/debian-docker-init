@@ -1,6 +1,6 @@
 ---
 # Usage:
-#   ansible-playbook docker-playbooks/nginx-add-host.yml -e domain=app.example.com -e docker_host=keeweb_host:80
+#   ansible-playbook docker-playbooks/nginx-add-host.yml -e domain=app.example.com -e docker_host=codeserver_host:8443
 # Requires a certificate first: CERTBOT_EMAIL=... ./request-new-certificate.sh app.example.com
 - name: Add an nginx HTTPS virtual host proxying to a container
   hosts: docker_hosts

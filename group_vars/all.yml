@@ -23,9 +23,7 @@ nginx_image: "nginx:latest"
 mongo_image: "mongo:latest"
 neko_image: "ghcr.io/m1k1o/neko/firefox:latest"
 code_server_image: "linuxserver/code-server:latest"
-keeweb_image: "antelle/keeweb:latest"
 json_server_node_image: "node:lts-alpine"
-eva_node_image: "node:lts-alpine"
 
 # Remove dangling (superseded) images after a successful update. Note this prunes
 # every dangling image on the host, not only the ones of these services.
