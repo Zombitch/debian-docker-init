@@ -1,7 +1,7 @@
 ---
 # Reach it through nginx: -e domain=... -e docker_host=codeserver_host:8443 (WebSocket headers are in the vhost template)
 - name: Deploy code-server
-  hosts: docker_hosts
+  hosts: localhost
   gather_facts: true
   become: true
   vars_prompt:

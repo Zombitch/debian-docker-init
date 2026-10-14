@@ -2,7 +2,7 @@
 # Mock REST API served from /data/json-server/db.json (create it first; it is chowned to uid 1000).
 # The whole directory is mounted (not just the file): json-server writes a temp file and renames it.
 - name: Deploy json-server
-  hosts: docker_hosts
+  hosts: localhost
   gather_facts: false
   become: true
   vars:

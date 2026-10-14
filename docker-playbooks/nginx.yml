@@ -1,6 +1,6 @@
 ---
 - name: Deploy nginx reverse proxy with fail2ban protection
-  hosts: docker_hosts
+  hosts: localhost
   gather_facts: true
   become: true
   vars:
