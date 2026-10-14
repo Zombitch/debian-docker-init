@@ -26,31 +26,34 @@
         dest: "{{ eva_dir }}/Dockerfile"
         mode: "0644"
 
-    - name: Build image
+    # Base image is pulled on every build; CACHEBUST (today's date) refreshes the Angular CLI
+    # and the eva sources at most once a day, so an unchanged day does not recreate the container.
+    - name: Build image on the latest base
       community.docker.docker_image_build:
         name: "{{ eva_local_image }}"
         path: "{{ eva_dir }}"
         rebuild: always
         pull: true
-        # Set eva_ref to a tag/commit for reproducible builds; with "main" bust the cache.
-        nocache: "{{ eva_ref == 'main' }}"
+        args:
+          CACHEBUST: "{{ ansible_facts['date_time']['date'] }}"
 
-    - name: Run eva container
-      community.docker.docker_container:
-        name: eva
-        image: "{{ eva_local_image }}"
-        pull: never
-        hostname: eva_host
-        state: started
-        restart_policy: unless-stopped
-        published_ports:
-          - "{{ bind_address }}:{{ eva_host_port }}:4200"
-        networks:
-          - name: "{{ network }}"
-        security_opts:
-          - no-new-privileges:true
-        cap_drop: [ALL]
-        log_driver: json-file
-        log_options:
-          max-size: 10m
-          max-file: "3"
+    - name: Run the freshly built eva image
+      ansible.builtin.include_tasks: includes/deploy_container.yml
+      vars:
+        svc_name: eva
+        svc_image: "{{ eva_local_image }}"
+        svc_pull: never
+        svc_params:
+          hostname: eva_host
+          restart_policy: unless-stopped
+          published_ports:
+            - "{{ bind_address }}:{{ eva_host_port }}:4200"
+          networks:
+            - name: "{{ network }}"
+          security_opts:
+            - no-new-privileges:true
+          cap_drop: [ALL]
+          log_driver: json-file
+          log_options:
+            max-size: 10m
+            max-file: "3"

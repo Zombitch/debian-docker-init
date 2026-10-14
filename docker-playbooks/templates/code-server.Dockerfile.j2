@@ -3,17 +3,23 @@ FROM {{ code_server_image }}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ARG NODE_VERSION={{ code_server_node_version }}
 ARG NVM_VERSION={{ code_server_nvm_version }}
+# Changes daily (see code-server.yml) so the layer below is refreshed from the network.
+ARG CACHEBUST=0
 ENV NVM_DIR=/usr/local/nvm
-ENV PATH=/usr/local/nvm/versions/node/v${NODE_VERSION}/bin:${PATH}
+ENV PATH=/usr/local/nvm/current-bin:${PATH}
 
-RUN apt-get update \
+# Node = newest LTS (nvm installer itself stays on NVM_VERSION); /usr/local/nvm/current-bin
+# is a stable symlink to that version's bin directory.
+RUN echo "refresh ${CACHEBUST}" \
+    && apt-get update \
     && apt-get install -y --no-install-recommends curl wget iputils-ping telnet \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p "$NVM_DIR" \
     && curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash \
     && . "$NVM_DIR/nvm.sh" \
-    && nvm install "$NODE_VERSION" \
+    && nvm install --lts \
+    && nvm use --lts >/dev/null \
+    && ln -sfn "$(dirname "$(nvm which current)")" "$NVM_DIR/current-bin" \
     && npm install -g @angular/cli @nestjs/cli \
     && npm cache clean --force

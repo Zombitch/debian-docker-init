@@ -4,10 +4,10 @@
 set -euo pipefail
 
 NGINX_CONTAINER="${NGINX_CONTAINER:-nginx}"
-CERTBOT_IMAGE="${CERTBOT_IMAGE:-certbot/certbot:v5.8.0}"
+CERTBOT_IMAGE="${CERTBOT_IMAGE:-certbot/certbot:latest}"
 NGINX_VOLUME_PATH="${NGINX_VOLUME_PATH:-/var/lib/docker/volumes/nginx_data/_data}"
 
-docker run --rm \
+docker run --rm --pull always \
   -v "${NGINX_VOLUME_PATH}/letsencrypt:/etc/letsencrypt" \
   -v "${NGINX_VOLUME_PATH}/letsencrypt-lib:/var/lib/letsencrypt" \
   -v "${NGINX_VOLUME_PATH}/www/certbot:/etc/nginx/www/certbot" \

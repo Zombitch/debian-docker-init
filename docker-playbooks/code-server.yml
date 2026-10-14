@@ -10,7 +10,6 @@
       private: true
   vars:
     code_server_dir: "{{ data_dir }}/code-server/docker"
-    code_server_node_version: "22.14.0"
     code_server_nvm_version: "0.40.1"
     code_server_local_image: mvs/code-server
 
@@ -35,35 +34,39 @@
         dest: "{{ code_server_dir }}/Dockerfile"
         mode: "0644"
 
-    # Layer cache keeps unchanged builds fast; the container is only recreated if the image changed.
-    - name: Build image
+    # Base image is pulled on every build; CACHEBUST (today's date) refreshes the apt/npm
+    # layers at most once a day, so an unchanged day does not recreate the container.
+    - name: Build image on the latest base
       community.docker.docker_image_build:
         name: "{{ code_server_local_image }}"
         path: "{{ code_server_dir }}"
         rebuild: always
         pull: true
+        args:
+          CACHEBUST: "{{ ansible_facts['date_time']['date'] }}"
 
-    - name: Run code-server container
-      community.docker.docker_container:
-        name: code-server
-        image: "{{ code_server_local_image }}"
-        pull: never
-        hostname: codeserver_host
-        state: started
-        restart_policy: unless-stopped
-        volumes:
-          - codeserver_data:/config
-        networks:
-          - name: "{{ network }}"
-        # No no-new-privileges here: the integrated terminal relies on sudo (SUDO_PASSWORD).
-        env:
-          PUID: "1000"
-          PGID: "1000"
-          TZ: "{{ timezone }}"
-          PASSWORD: "{{ pwd }}"
-          SUDO_PASSWORD: "{{ pwd }}"
-        log_driver: json-file
-        log_options:
-          max-size: 10m
-          max-file: "3"
-      no_log: true
+    - name: Run the freshly built code-server image
+      ansible.builtin.include_tasks: includes/deploy_container.yml
+      vars:
+        svc_name: code-server
+        svc_image: "{{ code_server_local_image }}"
+        svc_pull: never
+        svc_no_log: true
+        svc_params:
+          hostname: codeserver_host
+          restart_policy: unless-stopped
+          volumes:
+            - codeserver_data:/config
+          networks:
+            - name: "{{ network }}"
+          # No no-new-privileges here: the integrated terminal relies on sudo (SUDO_PASSWORD).
+          env:
+            PUID: "1000"
+            PGID: "1000"
+            TZ: "{{ timezone }}"
+            PASSWORD: "{{ pwd }}"
+            SUDO_PASSWORD: "{{ pwd }}"
+          log_driver: json-file
+          log_options:
+            max-size: 10m
+            max-file: "3"

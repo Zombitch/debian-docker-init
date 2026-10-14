@@ -26,22 +26,22 @@
         mode: "0644"
       register: keeweb_conf
 
-    - name: Run keeweb container
-      community.docker.docker_container:
-        name: keeweb
-        image: "{{ keeweb_image }}"
-        pull: missing
-        hostname: keeweb_host
-        state: started
-        restart: "{{ keeweb_conf is changed }}"
-        restart_policy: unless-stopped
-        volumes:
-          - "{{ keeweb_conf_dir }}/keeweb.conf:/etc/nginx/conf.d/keeweb.conf:ro"
-        networks:
-          - name: "{{ network }}"
-        security_opts:
-          - no-new-privileges:true
-        log_driver: json-file
-        log_options:
-          max-size: 10m
-          max-file: "3"
+    - name: Run the latest keeweb image
+      ansible.builtin.include_tasks: includes/deploy_container.yml
+      vars:
+        svc_name: keeweb
+        svc_image: "{{ keeweb_image }}"
+        svc_params:
+          hostname: keeweb_host
+          restart: "{{ keeweb_conf is changed }}"
+          restart_policy: unless-stopped
+          volumes:
+            - "{{ keeweb_conf_dir }}/keeweb.conf:/etc/nginx/conf.d/keeweb.conf:ro"
+          networks:
+            - name: "{{ network }}"
+          security_opts:
+            - no-new-privileges:true
+          log_driver: json-file
+          log_options:
+            max-size: 10m
+            max-file: "3"

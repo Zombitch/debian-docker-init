@@ -40,26 +40,28 @@
       community.docker.docker_network:
         name: "{{ network }}"
 
-    - name: Run json-server container (maintained 0.17.x release, run through npx)
-      community.docker.docker_container:
-        name: json-server
-        image: "{{ json_server_node_image }}"
-        pull: missing
-        hostname: json_server_host
-        state: started
-        restart_policy: unless-stopped
-        user: "1000:1000"
-        command: ["npx", "--yes", "json-server@0.17.4", "--host", "0.0.0.0", "--port", "80", "/data/db.json"]
-        published_ports:
-          - "{{ bind_address }}:{{ json_server_host_port }}:80"
-        volumes:
-          - "{{ json_server_dir }}:/data"
-        networks:
-          - name: "{{ network }}"
-        security_opts:
-          - no-new-privileges:true
-        cap_drop: [ALL]
-        log_driver: json-file
-        log_options:
-          max-size: 10m
-          max-file: "3"
+    # The container image is node:lts-alpine; the json-server npm package itself stays on the
+    # 0.17 line because json-server 1.x (beta) changed its API and db format.
+    - name: Run json-server on the latest Node LTS image
+      ansible.builtin.include_tasks: includes/deploy_container.yml
+      vars:
+        svc_name: json-server
+        svc_image: "{{ json_server_node_image }}"
+        svc_params:
+          hostname: json_server_host
+          restart_policy: unless-stopped
+          user: "1000:1000"
+          command: ["npx", "--yes", "json-server@0.17.4", "--host", "0.0.0.0", "--port", "80", "/data/db.json"]
+          published_ports:
+            - "{{ bind_address }}:{{ json_server_host_port }}:80"
+          volumes:
+            - "{{ json_server_dir }}:/data"
+          networks:
+            - name: "{{ network }}"
+          security_opts:
+            - no-new-privileges:true
+          cap_drop: [ALL]
+          log_driver: json-file
+          log_options:
+            max-size: 10m
+            max-file: "3"

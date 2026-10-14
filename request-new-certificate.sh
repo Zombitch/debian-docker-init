@@ -11,7 +11,7 @@ fi
 : "${CERTBOT_EMAIL:?Set CERTBOT_EMAIL to the contact address for Lets Encrypt}"
 
 NGINX_CONTAINER="${NGINX_CONTAINER:-nginx}"
-CERTBOT_IMAGE="${CERTBOT_IMAGE:-certbot/certbot:v5.8.0}"
+CERTBOT_IMAGE="${CERTBOT_IMAGE:-certbot/certbot:latest}"
 NGINX_VOLUME_PATH="${NGINX_VOLUME_PATH:-/var/lib/docker/volumes/nginx_data/_data}"
 
 LE_DIR="${NGINX_VOLUME_PATH}/letsencrypt"
@@ -23,7 +23,7 @@ DOMAINS=(-d "${DOMAIN}")
 
 mkdir -p "${LE_DIR}" "${LE_LIB}" "${WEBROOT}/.well-known/acme-challenge"
 
-docker run --rm \
+docker run --rm --pull always \
   -v "${LE_DIR}:/etc/letsencrypt" \
   -v "${LE_LIB}:/var/lib/letsencrypt" \
   -v "${WEBROOT}:/etc/nginx/www/certbot" \

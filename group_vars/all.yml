@@ -14,14 +14,22 @@ data_dir: /data
 # docker network and does not need host ports.
 bind_address: 127.0.0.1
 
-# Pinned images (bump deliberately, or let Renovate/Dependabot do it).
-nginx_image: "nginx:1.30"
-mongo_image: "mongo:8.0"
-neko_image: "ghcr.io/m1k1o/neko/firefox:3.1"
-code_server_image: "linuxserver/code-server:4.140.0"
-keeweb_image: "antelle/keeweb:1.18.7"
-json_server_node_image: "node:22-alpine"
-eva_node_image: "node:22-alpine"
+# Images always follow the newest tag: every playbook run pulls it and recreates the
+# container when it changed (see docker-playbooks/includes/deploy_container.yml, which also
+# health-checks the new container and rolls back to the previous image on failure).
+# To freeze a service, replace :latest with a version tag.
+# node uses "lts" (not "latest": the newest Node is an odd, non-LTS release).
+nginx_image: "nginx:latest"
+mongo_image: "mongo:latest"
+neko_image: "ghcr.io/m1k1o/neko/firefox:latest"
+code_server_image: "linuxserver/code-server:latest"
+keeweb_image: "antelle/keeweb:latest"
+json_server_node_image: "node:lts-alpine"
+eva_node_image: "node:lts-alpine"
+
+# Remove dangling (superseded) images after a successful update. Note this prunes
+# every dangling image on the host, not only the ones of these services.
+prune_old_images: false
 
 # Host path of the nginx named volume (used to drop vhost files / certificates).
 nginx_volume: nginx_data

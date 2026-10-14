@@ -31,39 +31,35 @@
         state: directory
         mode: "0755"
 
-    - name: Pull nginx image
-      community.docker.docker_image:
-        name: "{{ nginx_image }}"
-        source: pull
-
-    - name: Run nginx container
-      community.docker.docker_container:
-        name: "{{ nginx_container_name }}"
-        image: "{{ nginx_image }}"
-        state: started
-        restart_policy: unless-stopped
-        published_ports:
-          - "0.0.0.0:{{ https_port }}:443"
-          - "0.0.0.0:{{ http_port }}:80"
-        volumes:
-          - "{{ nginx_volume }}:/etc/nginx"
-          - "{{ nginx_log_path }}:/var/log/nginx"
-        networks:
-          - name: "{{ network }}"
-        security_opts:
-          - no-new-privileges:true
-        healthcheck:
-          test: ["CMD-SHELL", "nginx -t || exit 1"]
-          interval: 30s
-          timeout: 10s
-          retries: 3
-          start_period: 10s
-        memory: 256m
-        cpu_shares: 512
-        log_driver: json-file
-        log_options:
-          max-size: 10m
-          max-file: "3"
+    - name: Run the latest nginx image
+      ansible.builtin.include_tasks: includes/deploy_container.yml
+      vars:
+        svc_name: "{{ nginx_container_name }}"
+        svc_image: "{{ nginx_image }}"
+        svc_params:
+          restart_policy: unless-stopped
+          published_ports:
+            - "0.0.0.0:{{ https_port }}:443"
+            - "0.0.0.0:{{ http_port }}:80"
+          volumes:
+            - "{{ nginx_volume }}:/etc/nginx"
+            - "{{ nginx_log_path }}:/var/log/nginx"
+          networks:
+            - name: "{{ network }}"
+          security_opts:
+            - no-new-privileges:true
+          healthcheck:
+            test: ["CMD-SHELL", "nginx -t || exit 1"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 10s
+          memory: 256m
+          cpu_shares: 512
+          log_driver: json-file
+          log_options:
+            max-size: 10m
+            max-file: "3"
 
     # ------------------------------------------------------------------
     # Base configuration (written into the volume after first start, which

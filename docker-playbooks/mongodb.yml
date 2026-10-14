@@ -14,27 +14,8 @@
   vars:
     mongo_data_dir: "{{ data_dir }}/mongo"
     mongo_host_port: 2400
-    # Set to true once you checked the data files are compatible with mongo_image.
-    mongo_allow_image_change: false
 
   tasks:
-    # MongoDB data cannot be downgraded: the old playbook ran the untagged (latest) image.
-    - name: Look for an existing mongodb container
-      community.docker.docker_container_info:
-        name: mongodb
-      register: mongo_existing
-
-    - name: Refuse to silently change the MongoDB version of existing data
-      ansible.builtin.assert:
-        that: >-
-          not mongo_existing.exists
-          or mongo_existing.container.Config.Image == mongo_image
-          or mongo_allow_image_change | bool
-        fail_msg: >-
-          Existing container runs {{ mongo_existing.container.Config.Image | default('?') }}, this playbook wants {{ mongo_image }}.
-          Check the current version (docker exec mongodb mongosh --quiet --eval 'db.version()'), set mongo_image in
-          group_vars/all.yml to match it, or pass -e mongo_allow_image_change=true.
-
     - name: Create docker network
       community.docker.docker_network:
         name: "{{ network }}"
@@ -45,32 +26,35 @@
         state: directory
         mode: "0755"
 
-    - name: Run mongo container
-      community.docker.docker_container:
-        name: mongodb
-        image: "{{ mongo_image }}"
-        pull: missing
-        state: started
-        restart_policy: unless-stopped
-        published_ports:
-          - "{{ bind_address }}:{{ mongo_host_port }}:27017"
-        volumes:
-          - "{{ mongo_data_dir }}:/data/db"
-        networks:
-          - name: "{{ network }}"
-        security_opts:
-          - no-new-privileges:true
-        env:
-          MONGO_INITDB_ROOT_USERNAME: "{{ user }}"
-          MONGO_INITDB_ROOT_PASSWORD: "{{ pwd }}"
-        healthcheck:
-          test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
-          interval: 30s
-          timeout: 10s
-          retries: 3
-          start_period: 30s
-        log_driver: json-file
-        log_options:
-          max-size: 10m
-          max-file: "3"
-      no_log: true
+    # mongo_image follows :latest. MongoDB data cannot be downgraded: a major release
+    # that fails to start is rolled back, but take a mongodump before updating.
+    - name: Run the latest mongo image
+      ansible.builtin.include_tasks: includes/deploy_container.yml
+      vars:
+        svc_name: mongodb
+        svc_image: "{{ mongo_image }}"
+        svc_no_log: true
+        svc_health_retries: 60
+        svc_params:
+          restart_policy: unless-stopped
+          published_ports:
+            - "{{ bind_address }}:{{ mongo_host_port }}:27017"
+          volumes:
+            - "{{ mongo_data_dir }}:/data/db"
+          networks:
+            - name: "{{ network }}"
+          security_opts:
+            - no-new-privileges:true
+          env:
+            MONGO_INITDB_ROOT_USERNAME: "{{ user }}"
+            MONGO_INITDB_ROOT_PASSWORD: "{{ pwd }}"
+          healthcheck:
+            test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+          log_driver: json-file
+          log_options:
+            max-size: 10m
+            max-file: "3"

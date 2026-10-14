@@ -1,0 +1,64 @@
+---
+# Shared by every service playbook. Pulls the newest image, recreates the container
+# when the image (or its config) changed, waits until it is healthy, and rolls back to
+# the previously running image if it is not.
+#
+# Inputs:
+#   svc_name       container name
+#   svc_image      image reference (normally :latest)
+#   svc_params     remaining community.docker.docker_container options
+#   svc_pull       "always" (default) or "never" for locally built images
+#   svc_no_log     true when svc_params carries secrets
+- name: Inspect the current container
+  community.docker.docker_container_info:
+    name: "{{ svc_name }}"
+  register: svc_before
+  no_log: "{{ svc_no_log | default(false) }}"
+
+- name: Update the container and roll back if it does not become healthy
+  block:
+    - name: Pull the latest image and (re)create the container
+      community.docker.docker_container: >-
+        {{ svc_params | combine({'name': svc_name, 'image': svc_image, 'pull': svc_pull | default('always'), 'state': 'started'}) }}
+      register: svc_deploy
+      no_log: "{{ svc_no_log | default(false) }}"
+
+    - name: Give the new container a moment to crash if it is going to  # noqa: no-handler
+      ansible.builtin.wait_for:
+        timeout: 5
+      when: svc_deploy is changed
+
+    - name: Wait until the new container is running and healthy  # noqa: no-handler
+      community.docker.docker_container_info:
+        name: "{{ svc_name }}"
+      register: svc_state
+      until: >-
+        svc_state.exists
+        and svc_state.container.State.Running
+        and (svc_state.container.State.Health.Status | default('healthy')) == 'healthy'
+        and svc_state.container.RestartCount == 0
+      retries: "{{ svc_health_retries | default(30) }}"
+      delay: 5
+      when: svc_deploy is changed
+      no_log: "{{ svc_no_log | default(false) }}"
+  rescue:
+    - name: Roll back to the previous image
+      community.docker.docker_container: >-
+        {{ svc_params | combine({'name': svc_name, 'image': svc_before.container.Image, 'pull': 'never', 'state': 'started', 'recreate': true}) }}
+      when:
+        - svc_before.exists
+        - svc_deploy is defined
+        - svc_deploy is changed
+      no_log: "{{ svc_no_log | default(false) }}"
+
+    - name: Report the failed update
+      ansible.builtin.fail:
+        msg: >-
+          {{ svc_name }} did not come up healthy with {{ svc_image }}.
+          {{ 'Rolled back to the previous image.' if (svc_before.exists and svc_deploy is defined and svc_deploy is changed)
+             else 'No rollback was possible or needed.' }}
+
+- name: Remove superseded (dangling) images
+  community.docker.docker_prune:
+    images: true
+  when: prune_old_images | default(false) | bool
